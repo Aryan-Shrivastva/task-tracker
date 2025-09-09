@@ -1,0 +1,26 @@
+{
+  "tasks": [
+    {
+      "id": 2,
+      "description": "Complete Go project",
+      "status": "in-progress",
+      "createdAt": "2025-09-10T02:08:55.2365977+05:30",
+      "updatedAt": "2025-09-10T02:09:15.293453+05:30"
+    },
+    {
+      "id": 3,
+      "description": "Write comprehensive documentation with examples",
+      "status": "todo",
+      "createdAt": "2025-09-10T02:09:00.4802482+05:30",
+      "updatedAt": "2025-09-10T02:09:43.6138595+05:30"
+    },
+    {
+      "id": 4,
+      "description": "take the trash bin out",
+      "status": "todo",
+      "createdAt": "2025-09-10T02:15:30.5583339+05:30",
+      "updatedAt": "2025-09-10T02:15:30.5583339+05:30"
+    }
+  ],
+  "nextId": 5
+}
