@@ -2,6 +2,10 @@
 
 A simple command-line interface (CLI) application built in Go for tracking and managing your tasks. This project helps you keep track of what you need to do, what you have done, and what you are currently working on.
 
+## Project URL
+
+🔗 **Repository**: [https://github.com/Aryan-Shrivastva/task-tracker](https://github.com/Aryan-Shrivastva/task-tracker)
+
 ## Features
 
 - ✅ Add new tasks
