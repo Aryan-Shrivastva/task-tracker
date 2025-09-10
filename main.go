@@ -34,6 +34,9 @@ const (
 // Global taskList to avoid repeated load/save operations
 var taskList *TaskList
 
+// Global dirty flag to track if tasks have been modified
+var dirty bool
+
 // fatal prints an error message and exits with code 1
 func fatal(msg string, err error) {
 	if err != nil {
@@ -123,6 +126,7 @@ func addTask(description string) error {
 
 	taskList.Tasks = append(taskList.Tasks, task)
 	taskList.NextID++
+	dirty = true // Mark as modified
 
 	fmt.Printf("Task added successfully (ID: %d)\n", task.ID)
 	return nil
@@ -137,6 +141,7 @@ func updateTask(id int, description string) error {
 
 	task.Description = description
 	task.UpdatedAt = time.Now()
+	dirty = true // Mark as modified
 
 	fmt.Printf("Task %d updated successfully\n", id)
 	return nil
@@ -157,6 +162,7 @@ func deleteTask(id int) error {
 		return fmt.Errorf("task with ID %d not found", id)
 	}
 
+	dirty = true // Mark as modified
 	fmt.Printf("Task %d deleted successfully\n", id)
 	return nil
 }
@@ -170,6 +176,7 @@ func markTask(id int, status string) error {
 
 	task.Status = status
 	task.UpdatedAt = time.Now()
+	dirty = true // Mark as modified
 
 	fmt.Printf("Task %d marked as %s\n", id, status)
 	return nil
@@ -214,10 +221,10 @@ func listTasks(filter string) error {
 
 	// Use tabwriter for pretty output
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tStatus\tDescription")
-	fmt.Fprintln(w, "---\t------\t-----------")
+	fmt.Fprintln(w, "ID\tStatus\tDescription\tUpdated")
+	fmt.Fprintln(w, "---\t------\t-----------\t-------")
 	for _, task := range filteredTasks {
-		fmt.Fprintf(w, "%d\t%s\t%s\n", task.ID, task.Status, task.Description)
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", task.ID, task.Status, task.Description, task.UpdatedAt.Format("2006-01-02 15:04"))
 	}
 	w.Flush()
 
@@ -239,6 +246,67 @@ func printUsage() {
 	fmt.Printf("  task-cli list %s                   - List %s tasks\n", StatusDone, StatusDone)
 }
 
+// Command type for extensible command handling
+type CommandFunc func([]string) error
+
+// getCommands returns a map of available commands
+func getCommands() map[string]CommandFunc {
+	return map[string]CommandFunc{
+		"add": func(args []string) error {
+			if len(args) < 1 {
+				return fmt.Errorf("description is required for add command")
+			}
+			return addTask(args[0])
+		},
+		"update": func(args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("ID and description are required for update command")
+			}
+			id, err := parseID(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid task ID: %s", args[0])
+			}
+			return updateTask(id, args[1])
+		},
+		"delete": func(args []string) error {
+			if len(args) < 1 {
+				return fmt.Errorf("ID is required for delete command")
+			}
+			id, err := parseID(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid task ID: %s", args[0])
+			}
+			return deleteTask(id)
+		},
+		"mark-in-progress": func(args []string) error {
+			if len(args) < 1 {
+				return fmt.Errorf("ID is required for mark-in-progress command")
+			}
+			id, err := parseID(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid task ID: %s", args[0])
+			}
+			return markTask(id, StatusInProgress)
+		},
+		"mark-done": func(args []string) error {
+			if len(args) < 1 {
+				return fmt.Errorf("ID is required for mark-done command")
+			}
+			id, err := parseID(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid task ID: %s", args[0])
+			}
+			return markTask(id, StatusDone)
+		},
+		"list": func(args []string) error {
+			filter := ""
+			if len(args) > 0 {
+				filter = args[0]
+			}
+			return listTasks(filter)
+		},
+	}
+}
 func main() {
 	// Load tasks once at startup
 	var err error
@@ -247,10 +315,12 @@ func main() {
 		fatal("Error loading tasks", err)
 	}
 
-	// Ensure we save tasks before exit
+	// Ensure we save tasks before exit only if modified
 	defer func() {
-		if err := saveTasks(taskList); err != nil {
-			fmt.Printf("Warning: Error saving tasks: %v\n", err)
+		if dirty {
+			if err := saveTasks(taskList); err != nil {
+				fmt.Printf("Warning: Error saving tasks: %v\n", err)
+			}
 		}
 	}()
 
@@ -260,65 +330,14 @@ func main() {
 	}
 
 	command := os.Args[1]
+	commands := getCommands()
 
-	switch command {
-	case "add":
-		requireArgs(3, "Description is required for add command")
-		if err := addTask(os.Args[2]); err != nil {
-			fatal("Error adding task", err)
+	// Execute command using extensible command system
+	if cmd, ok := commands[command]; ok {
+		if err := cmd(os.Args[2:]); err != nil {
+			fatal("Command failed", err)
 		}
-
-	case "update":
-		requireArgs(4, "ID and description are required for update command")
-		id, err := parseID(os.Args[2])
-		if err != nil {
-			fatal(fmt.Sprintf("Invalid task ID: %s", os.Args[2]), err)
-		}
-		if err := updateTask(id, os.Args[3]); err != nil {
-			fatal("Error updating task", err)
-		}
-
-	case "delete":
-		requireArgs(3, "ID is required for delete command")
-		id, err := parseID(os.Args[2])
-		if err != nil {
-			fatal(fmt.Sprintf("Invalid task ID: %s", os.Args[2]), err)
-		}
-		if err := deleteTask(id); err != nil {
-			fatal("Error deleting task", err)
-		}
-
-	case "mark-in-progress":
-		requireArgs(3, "ID is required for mark-in-progress command")
-		id, err := parseID(os.Args[2])
-		if err != nil {
-			fatal(fmt.Sprintf("Invalid task ID: %s", os.Args[2]), err)
-		}
-		if err := markTask(id, StatusInProgress); err != nil {
-			fatal("Error marking task", err)
-		}
-
-	case "mark-done":
-		requireArgs(3, "ID is required for mark-done command")
-		id, err := parseID(os.Args[2])
-		if err != nil {
-			fatal(fmt.Sprintf("Invalid task ID: %s", os.Args[2]), err)
-		}
-		if err := markTask(id, StatusDone); err != nil {
-			fatal("Error marking task", err)
-		}
-
-	case "list":
-		filter := ""
-		if len(os.Args) > 2 {
-			filter = os.Args[2]
-		}
-		if err := listTasks(filter); err != nil {
-			fatal("Error listing tasks", err)
-		}
-
-	default:
+	} else {
 		fatal(fmt.Sprintf("Unknown command '%s'", command), nil)
-		printUsage()
 	}
 }
